@@ -64,9 +64,8 @@ import {
 } from './brand/macDockIcon';
 import CustomThemeManager from './components/settings/CustomThemeManager';
 import ToolbarButtonAppearanceSettings from './components/settings/ToolbarButtonAppearanceSettings';
-import SettingsCenterTreeNav, {
-  findSettingsCenterTreeItem,
-} from './components/settings/SettingsCenterTreeNav';
+import { WorkspaceSqlStatementHighlightSection } from './components/settings/WorkspaceSqlStatementHighlightRow';
+import SettingsCenterTreeNav, { findSettingsCenterTreeItem } from './components/settings/SettingsCenterTreeNav';
 import {
   DataDirectoryPage,
   DirectoryChoice,
@@ -5741,7 +5740,7 @@ function App() {
               return;
           }
 
-          if (event.repeat && matchedAction === 'toggleAIPanel') {
+          if (event.repeat && (matchedAction === 'toggleAIPanel' || matchedAction === 'runQuery')) {
               event.preventDefault();
               event.stopImmediatePropagation();
               return;
@@ -5752,7 +5751,7 @@ function App() {
 
           switch (matchedAction) {
               case 'runQuery':
-                  window.dispatchEvent(new CustomEvent('gonavi:run-active-query'));
+                  window.dispatchEvent(new CustomEvent('gonavi:run-active-query', { detail: { requireSelection: true } }));
                   break;
               case 'focusSidebarSearch':
                   handleFocusSidebarSearch();
@@ -7505,6 +7504,7 @@ function App() {
                           </div>
                       ) : (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              <WorkspaceSqlStatementHighlightSection />
                               {renderThemeSettingsSection(
                                   t('app.theme.query_template.title'),
                                   <>

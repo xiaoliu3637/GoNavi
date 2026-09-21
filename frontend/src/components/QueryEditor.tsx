@@ -69,7 +69,7 @@ import {
     isSqlEditorSchemaChangingStatement,
     shouldUseSqlEditorManagedTransactionForType,
 } from '../utils/sqlEditorTransaction';
-import { findSqlStatementRanges, resolveCurrentSqlStatementRange, resolveExecutableSql, stripLeadingSqlTrivia } from '../utils/sqlStatementSelection';
+import { findSqlStatementRanges, resolveCurrentSqlStatementRange, stripLeadingSqlTrivia } from '../utils/sqlStatementSelection';
 import {
     buildQueryEditorInlineMemoryEntries,
     copyQueryEditorTextToClipboard,
@@ -199,6 +199,8 @@ import QueryEditorToolbar, {
 import { useQueryEditorExecutionLifecycle } from './queryEditor/useQueryEditorExecutionLifecycle';
 import { useQueryEditorSqlErrorLocator } from './queryEditor/useQueryEditorSqlErrorLocator';
 import { useQueryEditorErrorDiagnose } from './queryEditor/useQueryEditorErrorDiagnose';
+import { useQueryEditorStatementHighlight } from './queryEditor/useQueryEditorStatementHighlight';
+import { resolveQueryEditorExecutableSql } from './queryEditor/queryEditorExecutableSql';
 import { resolveQueryEditorAiConnectionHost } from './queryEditor/queryEditorAiContext';
 import { injectQueryEditorAiPromptWithContext } from './queryEditor/queryEditorAiPromptInject';
 import { useAiSqlInsertToTabListener } from './queryEditor/queryEditorAiSqlInsert';
@@ -9562,67 +9564,40 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           : null);
   };
 
-  const resolveExecutableSQLAtEditorPosition = (model: any, sqlText: string, position: any, dbType = ''): string => {
-      const normalizedPosition = normalizeEditorPosition(position);
-      if (!normalizedPosition) return '';
-      const cursorOffset = getNormalizedOffsetAtPosition(sqlText, normalizedPosition);
-      const resolved = resolveExecutableSql(sqlText, cursorOffset, '', dbType);
-      return resolved?.sql || '';
-  };
-
-  const getExecutableSQLAtCurrentCursor = (model: any, sqlText: string, dbType = ''): string => {
-      const editor = editorRef.current;
-      const liveSelection = normalizeEditorPosition(editor?.getSelection?.());
-      if (liveSelection) {
-          return resolveExecutableSQLAtEditorPosition(model, sqlText, liveSelection, dbType);
-      }
-
-      const livePosition = normalizeEditorPosition(editor?.getPosition?.());
-      const cachedPosition = normalizeEditorPosition(lastEditorCursorPositionRef.current);
-      const candidates: Array<{ lineNumber: number; column: number }> = [];
-      if (cachedPosition) candidates.push(cachedPosition);
-      if (livePosition) candidates.push(livePosition);
-      const seen = new Set<string>();
-
-      for (const position of candidates) {
-          const key = `${position.lineNumber}:${position.column}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          const sql = resolveExecutableSQLAtEditorPosition(model, sqlText, position, dbType);
-          if (sql.trim()) return sql;
-      }
-
-      const fallbackPosition = cachedPosition || livePosition;
-      return resolveExecutableSQLAtEditorPosition(model, sqlText, fallbackPosition, dbType);
-  };
-
   const getExecutableSQL = (): string => {
-      const editor = editorRef.current;
-      const model = editor?.getModel?.();
       const currentQuery = getCurrentQuery();
       const selectedSQL = getSelectedSQL();
-      const selected = selectedSQL.trim();
-      if (!selected && resultSets.length > 0 && lastExecutedEditorQueryRef.current && currentQuery.startsWith(lastExecutedEditorQueryRef.current)) {
-          const appendedSQL = currentQuery.slice(lastExecutedEditorQueryRef.current.length);
-          if (appendedSQL.trim()) {
-              return appendedSQL;
-          }
-      }
-      if (!model || !editor) {
-          return selectedSQL || currentQuery;
-      }
-
-      if (selected) {
-          return selectedSQL;
-      }
       const activeConnection = connections.find((connection) => connection.id === currentConnectionId);
-      const activeDialect = resolveSqlDialect(
-          String(activeConnection?.config?.type || ''),
-          String(activeConnection?.config?.driver || ''),
-          { oceanBaseProtocol: activeConnection?.config?.oceanBaseProtocol },
-      );
-      return getExecutableSQLAtCurrentCursor(model, String(model.getValue?.() ?? currentQuery), activeDialect);
+      return resolveQueryEditorExecutableSql({
+          editor: editorRef.current,
+          currentQuery,
+          selectedSql: selectedSQL,
+          resultSetCount: resultSets.length,
+          lastExecutedQuery: lastExecutedEditorQueryRef.current,
+          cachedPosition: lastEditorCursorPositionRef.current,
+          dbType: resolveSqlDialect(
+              String(activeConnection?.config?.type || ''),
+              String(activeConnection?.config?.driver || ''),
+              { oceanBaseProtocol: activeConnection?.config?.oceanBaseProtocol },
+          ),
+      });
   };
+  const highlightCurrentSqlStatement = useStore((state) => state.sqlStatementHighlight?.highlightCurrentSqlStatement !== false);
+  const confirmSqlStatementRun = useStore((state) => state.sqlStatementHighlight?.confirmSqlStatementRun === true);
+  const { runFromShortcut } = useQueryEditorStatementHighlight({
+      editorRef,
+      enabled: highlightCurrentSqlStatement,
+      requireConfirm: confirmSqlStatementRun,
+      isActive,
+      isRunning: loading,
+      isElasticsearchMode,
+      dbType: resolveSqlDialect(
+          String(currentConnectionConfig?.type || ''),
+          String(currentConnectionConfig?.driver || ''),
+          { oceanBaseProtocol: currentConnectionConfig?.oceanBaseProtocol },
+      ),
+      getExecutionSql: getExecutableSQL,
+  });
 
   const captureEditorCursorPosition = (event?: React.MouseEvent<HTMLElement>) => {
       event?.preventDefault();
@@ -11581,9 +11556,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       pendingRunAfterSchemaLoadRef.current = false;
   }, []);
 
-  const handleRunSelectedShortcut = async () => {
-      await handleRun();
-  };
+  const handleRunSelectedShortcut = () => runFromShortcut(handleRun);
 
   const handleCancel = async () => {
     const finishCancelledRun = () => {
@@ -11685,6 +11658,11 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           if (!isShortcutMatch(event, binding.combo)) {
               return;
           }
+          if (event.repeat) {
+              event.preventDefault();
+              event.stopImmediatePropagation();
+              return;
+          }
           const editorHasFocus = !!editorRef.current?.hasTextFocus?.();
           const targetNode = resolveEventTargetNode(event.target);
           if (!shouldHandleQueryEditorRunShortcutFallback({
@@ -11704,7 +11682,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       return () => {
           window.removeEventListener('keydown', handleRunShortcut, true);
       };
-  }, [isActive, runQueryShortcutBinding, handleRun]);
+  }, [isActive, runQueryShortcutBinding, handleRun, handleRunSelectedShortcut]);
 
   // Re-register Monaco internal keybinding when runQuery shortcut changes
   useEffect(() => {
