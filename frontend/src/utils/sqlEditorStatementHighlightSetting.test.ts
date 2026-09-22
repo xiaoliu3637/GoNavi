@@ -18,6 +18,12 @@ describe('sanitizeHighlightCurrentSqlStatement', () => {
     expect(sanitizeHighlightCurrentSqlStatement(false)).toBe(false);
     expect(sanitizeHighlightCurrentSqlStatement(true)).toBe(true);
   });
+
+  it('rejects non-boolean persisted values', () => {
+    expect(sanitizeHighlightCurrentSqlStatement('false')).toBe(true);
+    expect(sanitizeHighlightCurrentSqlStatement(0)).toBe(true);
+    expect(sanitizeHighlightCurrentSqlStatement({ enabled: false })).toBe(true);
+  });
 });
 
 describe('sanitizeConfirmSqlStatementRun', () => {
@@ -30,5 +36,10 @@ describe('sanitizeConfirmSqlStatementRun', () => {
   it('preserves an explicit boolean', () => {
     expect(sanitizeConfirmSqlStatementRun(true)).toBe(true);
     expect(sanitizeConfirmSqlStatementRun(false)).toBe(false);
+  });
+
+  it('rejects non-boolean persisted values', () => {
+    expect(sanitizeConfirmSqlStatementRun('true')).toBe(false);
+    expect(sanitizeConfirmSqlStatementRun(1)).toBe(false);
   });
 });

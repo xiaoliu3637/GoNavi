@@ -1,6 +1,7 @@
 import {
   findSqlStatementRanges,
   resolveCurrentSqlStatementRange,
+  resolveSqlStatementRangeFromRanges,
   type SqlStatementRange,
 } from '../../utils/sqlStatementSelection';
 import { getNormalizedPositionAtOffset } from './QueryEditorHelpers';
@@ -50,15 +51,12 @@ export const findHighlightableStatementRanges = (
 };
 
 export const resolveHighlightableRangeFromRanges = (
+  sql: string,
   ranges: SqlStatementRange[],
   cursorOffset: number,
-): SqlStatementRange | null => {
-  if (ranges.length === 0) return null;
-  const offset = Math.max(0, Number.isFinite(cursorOffset) ? cursorOffset : 0);
-  return ranges.find((range) => offset >= range.start && offset <= range.end)
-    || ranges.find((range) => offset < range.start)
-    || ranges[ranges.length - 1];
-};
+): SqlStatementRange | null => (
+  resolveSqlStatementRangeFromRanges(sql, ranges, cursorOffset)
+);
 
 export const resolveHighlightableStatementRange = (
   sql: string,
@@ -77,6 +75,31 @@ const comparableSql = (sql: string): string => (
   String(sql || '').trim().replace(/[;；]\s*$/, '').trim()
 );
 
+const findComparableStatementSlice = (
+  text: string,
+  ranges: SqlStatementRange[],
+  target: string,
+  cursorOffset: number,
+): SqlStatementRange | null => {
+  const comparableTarget = comparableSql(target);
+  if (!comparableTarget || ranges.length === 0) return null;
+
+  let lastMatch: SqlStatementRange | null = null;
+  for (let startIndex = 0; startIndex < ranges.length; startIndex += 1) {
+    for (let endIndex = startIndex; endIndex < ranges.length; endIndex += 1) {
+      const start = ranges[startIndex].start;
+      const end = ranges[endIndex].end;
+      const slice = { start, end, text: text.slice(start, end) };
+      if (comparableSql(slice.text) !== comparableTarget) continue;
+      lastMatch = slice;
+      if (cursorOffset >= start && cursorOffset <= end) {
+        return slice;
+      }
+    }
+  }
+  return lastMatch;
+};
+
 export const resolveExecutionSqlHighlightRange = (
   sql: string,
   executionSql: string,
@@ -92,37 +115,43 @@ export const resolveExecutionSqlHighlightRange = (
     return cursorRange;
   }
 
-  const targetStart = target.search(/\S/);
-  const targetEnd = target.trimEnd().length;
-  const exactIndex = text.lastIndexOf(target);
-  if (exactIndex >= 0) {
-    const start = exactIndex + Math.max(0, targetStart);
-    const end = exactIndex + targetEnd;
-    return { start, end, text: text.slice(start, end) };
-  }
+  return findComparableStatementSlice(
+    text,
+    findHighlightableStatementRanges(text, dbType),
+    target,
+    Math.max(0, Number.isFinite(cursorOffset) ? cursorOffset : 0),
+  );
+};
 
-  const trimmedTarget = target.trim();
-  const trimmedIndex = text.lastIndexOf(trimmedTarget);
-  if (trimmedIndex < 0) return null;
-  const end = trimmedIndex + trimmedTarget.length;
-  return { start: trimmedIndex, end, text: text.slice(trimmedIndex, end) };
+export const buildUnframedExecutionHighlightKey = (executionSql: string): string | null => {
+  const normalized = comparableSql(executionSql);
+  return normalized ? `unframed:${normalized}` : null;
+};
+
+export const resolveShortcutStatementKey = ({
+  range,
+  executionSql,
+}: {
+  range: SqlStatementRange | null;
+  executionSql: string;
+}): string | null => {
+  if (range) return buildStatementHighlightKey(range);
+  return buildUnframedExecutionHighlightKey(executionSql);
 };
 
 export const resolveRunShortcutAction = ({
   enabled,
   requireConfirm,
-  hasSelection,
   statementKey,
   armedKey,
 }: {
   enabled: boolean;
-  /** When off, the shortcut highlights and executes in the same press. */
+  /** When off, the first run highlights and executes together. */
   requireConfirm: boolean;
-  hasSelection: boolean;
   statementKey: string | null;
   armedKey: string | null;
 }): RunShortcutAction => {
-  if (!enabled || hasSelection || !statementKey) {
+  if (!enabled || !statementKey) {
     return 'run';
   }
   if (!requireConfirm || armedKey === statementKey) {

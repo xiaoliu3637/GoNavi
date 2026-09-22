@@ -82,4 +82,63 @@ describe('SQL statement highlight persistence', () => {
       confirmSqlStatementRun: true,
     });
   });
+
+  it('prefers an independent slice over leftover appearance flags', async () => {
+    storage.setItem('lite-db-storage', JSON.stringify({
+      state: {
+        appearance: {
+          highlightCurrentSqlStatement: false,
+          confirmSqlStatementRun: true,
+        },
+        sqlStatementHighlight: {
+          highlightCurrentSqlStatement: true,
+          confirmSqlStatementRun: false,
+        },
+      },
+      version: 21,
+    }));
+
+    const { useStore } = await importStore();
+    expect(useStore.getState().sqlStatementHighlight).toEqual({
+      highlightCurrentSqlStatement: true,
+      confirmSqlStatementRun: false,
+    });
+  });
+
+  it('fills missing slice fields from leftover appearance flags', async () => {
+    storage.setItem('lite-db-storage', JSON.stringify({
+      state: {
+        appearance: {
+          highlightCurrentSqlStatement: false,
+          confirmSqlStatementRun: true,
+        },
+        sqlStatementHighlight: {},
+      },
+      version: 21,
+    }));
+
+    const { useStore } = await importStore();
+    expect(useStore.getState().sqlStatementHighlight).toEqual({
+      highlightCurrentSqlStatement: false,
+      confirmSqlStatementRun: true,
+    });
+  });
+
+  it('does not treat a missing slice as an empty object during migration', async () => {
+    storage.setItem('lite-db-storage', JSON.stringify({
+      state: {
+        appearance: {
+          highlightCurrentSqlStatement: false,
+          confirmSqlStatementRun: true,
+        },
+      },
+      version: 21,
+    }));
+
+    const { useStore } = await importStore();
+    expect(useStore.getState().sqlStatementHighlight).toEqual({
+      highlightCurrentSqlStatement: false,
+      confirmSqlStatementRun: true,
+    });
+  });
 });

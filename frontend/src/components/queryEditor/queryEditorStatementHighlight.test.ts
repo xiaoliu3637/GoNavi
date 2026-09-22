@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildStatementHighlightKey,
   buildStatementOverlayRects,
+  buildUnframedExecutionHighlightKey,
   buildWrappedStatementPolygon,
   findHighlightableStatementRanges,
   getStatementLineSlices,
@@ -10,6 +11,7 @@ import {
   resolveHighlightableRangeFromRanges,
   resolveHighlightableStatementRange,
   resolveRunShortcutAction,
+  resolveShortcutStatementKey,
   shouldDisarmArmedHighlightOnClick,
 } from './queryEditorStatementHighlight';
 
@@ -33,8 +35,8 @@ describe('resolveHighlightableStatementRange', () => {
   it('reuses parsed ranges while preserving delimiter cursor behavior', () => {
     const ranges = findHighlightableStatementRanges(MULTI_STATEMENT_SQL, 'mysql');
 
-    expect(resolveHighlightableRangeFromRanges(ranges, 9)?.text).toBe('SELECT 1;');
-    expect(resolveHighlightableRangeFromRanges(ranges, 12)?.text).toBe('SELECT id FROM users;');
+    expect(resolveHighlightableRangeFromRanges(MULTI_STATEMENT_SQL, ranges, 9)?.text).toBe('SELECT 1;');
+    expect(resolveHighlightableRangeFromRanges(MULTI_STATEMENT_SQL, ranges, 12)?.text).toBe('SELECT id FROM users;');
   });
 });
 
@@ -75,7 +77,6 @@ describe('resolveRunShortcutAction', () => {
     resolveRunShortcutAction({
       enabled: true,
       requireConfirm: true,
-      hasSelection: false,
       statementKey,
       armedKey: null,
       ...overrides,
@@ -86,8 +87,8 @@ describe('resolveRunShortcutAction', () => {
     expect(action({ enabled: false })).toBe('run');
   });
 
-  it('runs immediately when the editor has a selection', () => {
-    expect(action({ hasSelection: true })).toBe('run');
+  it('arms when the editor has a selection', () => {
+    expect(action({ statementKey: 'sel:DROP TABLE t' })).toBe('arm');
   });
 
   it('runs on a single press when confirmation is off', () => {
@@ -107,8 +108,41 @@ describe('resolveRunShortcutAction', () => {
     expect(action({ statementKey: '30:40:SELECT 2;', armedKey: statementKey })).toBe('arm');
   });
 
-  it('runs when no statement can be identified', () => {
+  it('runs when no statement or execution SQL can be identified', () => {
     expect(action({ statementKey: null })).toBe('run');
+  });
+
+  it('arms an unframed execution target until the same shortcut is pressed again', () => {
+    const unframedKey = buildUnframedExecutionHighlightKey('DELETE FROM missing');
+    expect(action({ statementKey: unframedKey })).toBe('arm');
+    expect(action({ statementKey: unframedKey, armedKey: unframedKey })).toBe('run');
+  });
+
+  it('runs when confirmation is on but the previous arm belonged to another statement that was cleared', () => {
+    expect(action({ armedKey: null, requireConfirm: true })).toBe('arm');
+    expect(action({ enabled: true, requireConfirm: true, statementKey: '', armedKey: '' })).toBe('run');
+  });
+});
+
+describe('resolveShortcutStatementKey', () => {
+  it('uses the framed range when present and an unframed execution key otherwise', () => {
+    const range = { start: 0, end: 9, text: 'SELECT 1;' };
+    expect(resolveShortcutStatementKey({
+      range,
+      executionSql: 'SELECT 1',
+    })).toBe(buildStatementHighlightKey(range));
+    expect(resolveShortcutStatementKey({
+      range: null,
+      executionSql: 'DELETE FROM missing;',
+    })).toBe('unframed:DELETE FROM missing');
+    expect(resolveShortcutStatementKey({
+      range,
+      executionSql: 'SELECT 1',
+    })).toBe('0:9:SELECT 1;');
+    expect(resolveShortcutStatementKey({
+      range: null,
+      executionSql: '   \n',
+    })).toBeNull();
   });
 });
 

@@ -603,40 +603,35 @@ export const resolveSqlStatementPrefix = (sql: string, dbType = ''): string => {
   return currentRange && currentRange.end === trimmedEnd ? text.slice(currentRange.start) : '';
 };
 
-export const resolveCurrentSqlStatementRange = (sql: string, cursorOffset: number, dbType = ''): SqlStatementRange | null => {
+export const resolveSqlStatementRangeFromRanges = (
+  sql: string,
+  ranges: SqlStatementRange[],
+  cursorOffset: number,
+): SqlStatementRange | null => {
+  if (ranges.length === 0) return null;
   const text = String(sql || '').replace(/\r\n/g, '\n');
   const offset = Math.max(0, Math.min(text.length, Number.isFinite(cursorOffset) ? cursorOffset : 0));
-  const ranges = findSqlStatementRanges(text, dbType);
-  if (ranges.length === 0) {
-    return null;
-  }
 
   // Monaco may report a caret clicked on a trailing semicolon as the offset
   // immediately after it (for example, on the following newline). Keep that
   // caret attached to the statement whose delimiter was clicked.
   if (isDelimiterFollowupOffset(text, offset)) {
     const delimiterStatement = findStatementBeforeDelimiter(text, ranges, offset - 1);
-    if (delimiterStatement) {
-      return delimiterStatement;
-    }
+    if (delimiterStatement) return delimiterStatement;
   }
 
   const containingRange = ranges.find((range) => offset >= range.start && offset <= range.end);
-  if (containingRange) {
-    return containingRange;
-  }
+  if (containingRange) return containingRange;
 
   const slashLine = resolveStandaloneSqlSlashLineAtOffset(text, offset);
-  if (slashLine) {
-    return findPreviousSqlStatementRange(ranges, slashLine.lineStart);
-  }
+  if (slashLine) return findPreviousSqlStatementRange(ranges, slashLine.lineStart);
 
-  const nextRange = ranges.find((range) => offset < range.start);
-  if (nextRange) {
-    return nextRange;
-  }
+  return ranges.find((range) => offset < range.start) || ranges[ranges.length - 1];
+};
 
-  return ranges[ranges.length - 1];
+export const resolveCurrentSqlStatementRange = (sql: string, cursorOffset: number, dbType = ''): SqlStatementRange | null => {
+  const text = String(sql || '').replace(/\r\n/g, '\n');
+  return resolveSqlStatementRangeFromRanges(text, findSqlStatementRanges(text, dbType), cursorOffset);
 };
 
 export const resolveExecutableSql = (

@@ -253,4 +253,23 @@ describe('useQueryEditorStatementHighlight', () => {
     unmount();
     expect(host.querySelector('.gonavi-query-editor-statement-frame')).toBeNull();
   });
+
+  it('disarms confirmation when clicking outside the framed statement', () => {
+    const { holder, host, listeners } = mountProbe(true);
+
+    expect(holder.arm?.()).toBe('arm');
+    act(() => listeners.mouseDown?.({ target: { position: { lineNumber: 1, column: 1 } } }));
+    expect(host.querySelector('.gonavi-query-editor-statement-frame.is-armed')).toBeNull();
+    expect(holder.arm?.()).toBe('arm');
+  });
+
+  it('does not hide an armed frame on mouse leave', () => {
+    const { holder, host } = mountProbe(true);
+
+    expect(holder.arm?.()).toBe('arm');
+    act(() => {
+      host.dispatchEvent(new Event('mouseleave'));
+    });
+    expect(host.querySelector('.gonavi-query-editor-statement-frame.is-armed')).not.toBeNull();
+  });
 });

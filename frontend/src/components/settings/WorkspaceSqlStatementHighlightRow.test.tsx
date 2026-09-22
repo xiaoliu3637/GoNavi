@@ -52,4 +52,21 @@ describe('WorkspaceSqlStatementHighlightSection', () => {
     expect(switches[1].props.disabled).toBe(true);
     expect(switches[1].props.checked).toBe(true);
   });
+
+  it('re-enables confirmation after highlighting is turned back on', () => {
+    storeState.sqlStatementHighlight.highlightCurrentSqlStatement = false;
+    const renderer = create(<WorkspaceSqlStatementHighlightSection />);
+    let switches = renderer.root.findAllByType(Switch);
+    expect(switches[1].props.disabled).toBe(true);
+
+    act(() => switches[0].props.onChange(true));
+    expect(storeState.setSqlStatementHighlightSettings).toHaveBeenCalledWith({
+      highlightCurrentSqlStatement: true,
+    });
+
+    storeState.sqlStatementHighlight.highlightCurrentSqlStatement = true;
+    act(() => renderer.update(<WorkspaceSqlStatementHighlightSection />));
+    switches = renderer.root.findAllByType(Switch);
+    expect(switches[1].props.disabled).toBe(false);
+  });
 });

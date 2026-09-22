@@ -33,18 +33,31 @@ export const sanitizeSqlStatementHighlightSettings = (
   ),
 });
 
+const isSettingsRecord = (value: unknown): value is Record<string, unknown> => (
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+);
+
+const readPersistedHighlightField = (
+  source: Record<string, unknown> | undefined,
+  key: keyof SqlStatementHighlightSettings,
+): boolean | undefined => {
+  if (!source || !Object.prototype.hasOwnProperty.call(source, key)) return undefined;
+  const value = source[key];
+  return typeof value === 'boolean' ? value : undefined;
+};
+
 export const resolvePersistedSqlStatementHighlightSettings = (
   settings: unknown,
   legacyAppearance?: unknown,
 ): SqlStatementHighlightSettings => {
-  const source = settings && typeof settings === 'object'
-    ? settings
-    : legacyAppearance && typeof legacyAppearance === 'object'
-      ? legacyAppearance
-      : undefined;
-  return sanitizeSqlStatementHighlightSettings(
-    source as Partial<SqlStatementHighlightSettings> | undefined,
-  );
+  const slice = isSettingsRecord(settings) ? settings : undefined;
+  const legacy = isSettingsRecord(legacyAppearance) ? legacyAppearance : undefined;
+  return sanitizeSqlStatementHighlightSettings({
+    highlightCurrentSqlStatement: readPersistedHighlightField(slice, 'highlightCurrentSqlStatement')
+      ?? readPersistedHighlightField(legacy, 'highlightCurrentSqlStatement'),
+    confirmSqlStatementRun: readPersistedHighlightField(slice, 'confirmSqlStatementRun')
+      ?? readPersistedHighlightField(legacy, 'confirmSqlStatementRun'),
+  });
 };
 
 type SliceStateSetter = (

@@ -3,21 +3,21 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { SqlStatementRange } from '../../utils/sqlStatementSelection';
 import { getNormalizedOffsetAtPosition } from './QueryEditorHelpers';
 import {
-  buildStatementHighlightKey,
   findHighlightableStatementRanges,
   resolveExecutionSqlHighlightRange,
   resolveHighlightableRangeFromRanges,
   resolveRunShortcutAction,
+  resolveShortcutStatementKey,
   type RunShortcutAction,
 } from './queryEditorStatementHighlight';
 import {
   bindStatementHighlightEditor,
-  editorHasNonEmptySelection,
   paintStatementFrame,
   readStatementHighlightSql,
   type OverlayRefs,
   type StatementHighlightEditor,
 } from './queryEditorStatementHighlightOverlay';
+import { notifyUnframedStatementRunArmed } from './queryEditorStatementHighlightNotify';
 import './queryEditorStatementHighlight.css';
 
 export type { StatementHighlightEditor } from './queryEditorStatementHighlightOverlay';
@@ -67,7 +67,7 @@ const resolveRangeAtPosition = (
   }
   const offset = getNormalizedOffsetAtPosition(sql, position);
   if (cache.offsets.has(offset)) return cache.offsets.get(offset) || null;
-  const range = resolveHighlightableRangeFromRanges(cache.statementRanges, offset);
+  const range = resolveHighlightableRangeFromRanges(sql, cache.statementRanges, offset);
   if (cache.offsets.size >= 256) cache.offsets.clear();
   cache.offsets.set(offset, range);
   return range;
@@ -196,22 +196,25 @@ export const useQueryEditorStatementHighlight = ({
     const sql = readStatementHighlightSql(editor);
     const position = editor?.getPosition?.() || null;
     const offset = position ? getNormalizedOffsetAtPosition(sql, position) : 0;
-    const hasSelection = editorHasNonEmptySelection(editor);
-    const range = hasSelection ? null : resolveExecutionSqlHighlightRange(
-      sql, executionSqlRef.current(), offset, dbTypeRef.current,
+    const executionSql = executionSqlRef.current();
+    const range = resolveExecutionSqlHighlightRange(
+      sql, executionSql, offset, dbTypeRef.current,
     );
-    const statementKey = range ? buildStatementHighlightKey(range) : null;
+    const statementKey = resolveShortcutStatementKey({ range, executionSql });
     const action = resolveRunShortcutAction({
-      enabled: true, requireConfirm, hasSelection, statementKey, armedKey: armedKeyRef.current,
+      enabled: true, requireConfirm, statementKey, armedKey: armedKeyRef.current,
     });
-    if (!range || hasSelection) {
+    if (action === 'run' && !range) {
       clearHighlight();
       return 'run';
     }
     armedKeyRef.current = statementKey;
     armedRangeRef.current = range;
     hoverRangeRef.current = null;
-    overlayRef.current = paintStatementFrame(editor, stateRefs, true);
+    overlayRef.current = paintStatementFrame(editor, stateRefs, Boolean(range));
+    if (action === 'arm' && !range) {
+      notifyUnframedStatementRunArmed();
+    }
     return action;
   }, [clearArmed, clearHighlight, editorRef, featureOn, requireConfirm, stateRefs]);
   const runFromShortcut = useCallback(async (run: () => void | Promise<void>) => {

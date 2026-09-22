@@ -1,6 +1,5 @@
 import type { SqlStatementRange } from '../../utils/sqlStatementSelection';
 import {
-  buildStatementHighlightKey,
   buildStatementOverlayRects,
   buildWrappedStatementPolygon,
   getStatementLineSlices,
@@ -219,16 +218,30 @@ export const bindStatementHighlightEditor = ({
       paint();
       return;
     }
-    const range = resolveRange(editor.getPosition?.() || null);
-    if (!range || buildStatementHighlightKey(range) !== refs.armedKey) onDisarm();
+    if (!refs.armedRange) {
+      onDisarm();
+      paint();
+      return;
+    }
+    const position = editor.getPosition?.() || null;
+    const offset = position
+      ? getNormalizedOffsetAtPosition(readStatementHighlightSql(editor), position)
+      : null;
+    if (shouldDisarmArmedHighlightOnClick({ armedRange: refs.armedRange, clickOffset: offset })) {
+      onDisarm();
+    }
     paint();
   };
   const handleMouseDown = (event: EditorPositionEvent) => {
-    if (!refs.armedRange) return;
+    if (!refs.armedKey) return;
     const position = event.target?.position || null;
     const sql = readStatementHighlightSql(editor);
     const clickOffset = position ? getNormalizedOffsetAtPosition(sql, position) : null;
-    if (!shouldDisarmArmedHighlightOnClick({ armedRange: refs.armedRange, clickOffset })) return;
+    const clickedOutsideArmedRange = !refs.armedRange || shouldDisarmArmedHighlightOnClick({
+      armedRange: refs.armedRange,
+      clickOffset,
+    });
+    if (!clickedOutsideArmedRange) return;
     onDisarm();
     refs.hoverRange = resolveRange(position);
     paint();

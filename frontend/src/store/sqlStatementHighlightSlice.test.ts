@@ -37,6 +37,44 @@ describe('sqlStatementHighlightSlice', () => {
       highlightCurrentSqlStatement: false,
       confirmSqlStatementRun: true,
     });
+    expect(resolvePersistedSqlStatementHighlightSettings(null, {
+      highlightCurrentSqlStatement: false,
+      confirmSqlStatementRun: true,
+    })).toEqual({
+      highlightCurrentSqlStatement: false,
+      confirmSqlStatementRun: true,
+    });
+    expect(resolvePersistedSqlStatementHighlightSettings('legacy', {
+      highlightCurrentSqlStatement: false,
+    })).toEqual({
+      highlightCurrentSqlStatement: false,
+      confirmSqlStatementRun: false,
+    });
+    expect(resolvePersistedSqlStatementHighlightSettings({}, {
+      highlightCurrentSqlStatement: false,
+      confirmSqlStatementRun: true,
+    })).toEqual({
+      highlightCurrentSqlStatement: false,
+      confirmSqlStatementRun: true,
+    });
+    expect(resolvePersistedSqlStatementHighlightSettings({
+      confirmSqlStatementRun: true,
+    }, {
+      highlightCurrentSqlStatement: false,
+    })).toEqual({
+      highlightCurrentSqlStatement: false,
+      confirmSqlStatementRun: true,
+    });
+    expect(resolvePersistedSqlStatementHighlightSettings({
+      highlightCurrentSqlStatement: 'false',
+      confirmSqlStatementRun: 1,
+    }, {
+      highlightCurrentSqlStatement: false,
+      confirmSqlStatementRun: true,
+    })).toEqual({
+      highlightCurrentSqlStatement: false,
+      confirmSqlStatementRun: true,
+    });
   });
 
   it('updates only the requested highlight setting', () => {
@@ -60,5 +98,13 @@ describe('sqlStatementHighlightSlice', () => {
 
     expect(state.sqlStatementHighlight.highlightCurrentSqlStatement).toBe(false);
     expect(state.sqlStatementHighlight.confirmSqlStatementRun).toBe(true);
+
+    slice.setSqlStatementHighlightSettings({
+      confirmSqlStatementRun: false,
+    });
+    expect(state.sqlStatementHighlight).toEqual({
+      highlightCurrentSqlStatement: false,
+      confirmSqlStatementRun: false,
+    });
   });
 });
